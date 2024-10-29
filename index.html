@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Tiempos en la Jornada de Trabajo para los Conductores</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        h1, h2 {
+            text-align: center;
+        }
+        form {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        label {
+            display: block;
+            margin: 15px 0 5px;
+        }
+        input[type="text"], input[type="number"], input[type="time"], input[type="date"], textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .results {
+            margin-top: 20px;
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Control de Tiempos en la Jornada de Trabajo para los Conductores</h1>
+
+    <form id="serviceForm">
+        <label for="fecha">Fecha:</label>
+        <input type="date" id="fecha" required>
+
+        <label for="linea">Línea:</label>
+        <input type="text" id="linea" required>
+
+        <label for="numeroTurno">Número de Turno:</label>
+        <input type="text" id="numeroTurno" required>
+
+        <label for="horaInicioHoja">Hora de Inicio en Hoja de Servicios:</label>
+        <input type="time" id="horaInicioHoja" required>
+
+        <label for="horaFinHoja">Hora de Fin en Hoja de Servicios:</label>
+        <input type="time" id="horaFinHoja" required>
+
+        <label for="horaInicioReal">Login:</label>
+        <input type="time" id="horaInicioReal" required>
+
+        <label for="horaFinReal">Logout:</label>
+        <input type="time" id="horaFinReal" required>
+
+        <label for="numeroAutobus">Número de Autobús:</label>
+        <input type="text" id="numeroAutobus" required>
+
+        <label for="viajeros">Número Total de Viajeros:</label>
+        <input type="number" id="viajeros" min="0" required>
+
+        <label for="ventasBilletes">Venta Total de Billetes:</label>
+        <input type="number" id="ventasBilletes" min="0" required>
+
+        <label for="observaciones">Observaciones:</label>
+        <textarea id="observaciones" rows="3"></textarea>
+
+        <button type="button" onclick="calcular()">Calcular Tiempos</button>
+        <button type="button" onclick="limpiarFormulario()">Limpiar Formulario</button>
+        <button type="button" onclick="guardarDatosCSV()">Guardar en CSV</button>
+        <button type="button" onclick="diaLibre()">Día Libre</button>
+    </form>
+
+    <div class="results" id="results"></div>
+    <a id="downloadLink" style="display:none"></a>
+
+    <table id="summaryTable">
+        <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Línea</th>
+                <th>Número de Turno</th>
+                <th>Hora de Inicio en Hoja</th>
+                <th>Hora de Fin en Hoja</th>
+                <th>Horas Totales en Hoja</th>
+                <th>Login</th>
+                <th>Logout</th>
+                <th>Tiempo Total Operativo</th>
+                <th>Exceso de Minutos</th>
+                <th>Número de Autobús</th>
+                <th>Número de Viajeros</th>
+                <th>Venta Total de Billetes</th>
+                <th>Liquidación Total (€)</th>
+                <th>Observaciones</th>
+            </tr>
+        </thead>
+        <tbody id="summaryBody">
+        </tbody>
+    </table>
+
+    <script>
+        let registros = [];
+        let currentMonth = new Date().getMonth() + 1;
+        let totalAnual = {
+            horasHoja: 0,
+            tiempoOperativo: 0,
+            viajeros: 0,
+            ventasBilletes: 0,
+            liquidacion: 0
+        };
+
+        function calcular() {
+            const fecha = document.getElementById("fecha").value;
+            if (!fecha) {
+                alert("Por favor, seleccione una fecha.");
+                return;
+            }
+            const linea = document.getElementById("linea").value;
+            const numeroTurno = document.getElementById("numeroTurno").value;
+            const horaInicioHoja = document.getElementById("horaInicioHoja").value;
+            const horaFinHoja = document.getElementById("horaFinHoja").value;
+            const horaInicioReal = document.getElementById("horaInicioReal").value;
+            const horaFinReal = document.getElementById("horaFinReal").value;
+            const numeroAutobus = document.getElementById("numeroAutobus").value;
+            const viajeros = parseInt(document.getElementById("viajeros").value) || 0;
+            const ventasBilletes = parseInt(document.getElementById("ventasBilletes").value) || 0;
+            const observaciones = document.getElementById("observaciones").value;
+
+            const precioBillete = 1.30;
+
+            const inicioHoja = new Date(`1970-01-01T${horaInicioHoja}:00`);
+            const finHoja = new Date(`1970-01-01T${horaFinHoja}:00`);
+            const inicioReal = new Date(`1970-01-01T${horaInicioReal}:00`);
+            const finReal = new Date(`1970-01-01T${horaFinReal}:00`);
+
+            const tiempoHojaMin = (finHoja - inicioHoja) / (1000 * 60);
+            const tiempoRealMin = (finReal - inicioReal) / (1000 * 60);
+            const diferenciaTiempoMin = (finReal - finHoja) / (1000 * 60);
+            const excesoMin = diferenciaTiempoMin > 0 ? diferenciaTiempoMin : 0;
+            const liquidacionTotal = ventasBilletes * precioBillete;
+
+            const registroExistenteIndex = registros.findIndex(reg => reg.fecha === fecha);
+            if (registroExistenteIndex !== -1) {
+                registros[registroExistenteIndex] = {
+                    fecha,
+                    linea,
+                    numeroTurno,
+                    horaInicioHoja,
+                    horaFinHoja,
+                    tiempoHoja: convertirMinutosAHorasYMinutos(tiempoHojaMin),
+                    login: horaInicioReal,
+                    logout: horaFinReal,
+                    tiempoOperativo: convertirMinutosAHorasYMinutos(tiempoRealMin),
+                    excesoMin: convertirMinutosAHorasYMinutos(excesoMin),
+                    numeroAutobus,
+                    viajeros,
+                    ventasBilletes,
+                    liquidacionTotal: liquidacionTotal.toFixed(2),
+                    observaciones
+                };
+            } else {
+                registros.push({
+                    fecha,
+                    linea,
+                    numeroTurno,
+                    horaInicioHoja,
+                    horaFinHoja,
+                    tiempoHoja: convertirMinutosAHorasYMinutos(tiempoHojaMin),
+                    login: horaInicioReal,
+                    logout: horaFinReal,
+                    tiempoOperativo: convertirMinutosAHorasYMinutos(tiempoRealMin),
+                    excesoMin: convertirMinutosAHorasYMinutos(excesoMin),
+                    numeroAutobus,
+                    viajeros,
+                    ventasBilletes,
+                    liquidacionTotal: liquidacionTotal.toFixed(2),
+                    observaciones
+                });
+            }
+
+            registros.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+            const fechaRegistro = new Date(fecha);
+            const mesRegistro = fechaRegistro.getMonth() + 1;
+            if (mesRegistro !== currentMonth) {
+                sumarTotalesAlAnual();
+                currentMonth = mesRegistro;
+            }
+
+            mostrarResultados();
+        }
+
+        function limpiarFormulario() {
+            document.getElementById("serviceForm").reset();
+        }
+
+        function diaLibre() {
+            const fecha = document.getElementById("fecha").value;
+            if (!fecha) {
+                alert("Por favor, seleccione una fecha antes de marcar el día como libre.");
+                return;
+            }
+            document.getElementById("linea").value = "0";
+            document.getElementById("numeroTurno").value = "0";
+            document.getElementById("horaInicioHoja").value = "00:00";
+            document.getElementById("horaFinHoja").value = "00:00";
+            document.getElementById("horaInicioReal").value = "00:00";
+            document.getElementById("horaFinReal").value = "00:00";
+            document.getElementById("numeroAutobus").value = "0";
+            document.getElementById("viajeros").value = "0";
+            document.getElementById("ventasBilletes").value = "0";
+            document.getElementById("observaciones").value = "DIA LIBRE";
+        }
+
+        function convertirMinutosAHorasYMinutos(minutos) {
+            const horas = Math.floor(minutos / 60);
+            const min = minutos % 60;
+            return `${horas}h ${min}m`;
+        }
+
+        function sumarTotalesAlAnual() {
+            let totalHorasHoja = 0;
+            let totalTiempoOperativo = 0;
+            let totalViajeros = 0;
+            let totalVentasBilletes = 0;
+            let totalLiquidacion = 0;
+
+            registros.forEach(registro => {
+                totalHorasHoja += parseInt(registro.tiempoHoja.split('h')[0]) * 60 + parseInt(registro.tiempoHoja.split('h')[1]);
+                totalTiempoOperativo += parseInt(registro.tiempoOperativo.split('h')[0]) * 60 + parseInt(registro.tiempoOperativo.split('h')[1]);
+                totalViajeros += registro.viajeros;
+                totalVentasBilletes += registro.ventasBilletes;
+                totalLiquidacion += parseFloat(registro.liquidacionTotal);
+            });
+
+            totalAnual.horasHoja += totalHorasHoja;
+            totalAnual.tiempoOperativo += totalTiempoOperativo;
+            totalAnual.viajeros += totalViajeros;
+            totalAnual.ventasBilletes += totalVentasBilletes;
+            totalAnual.liquidacion += totalLiquidacion;
+        }
+
+        function mostrarResultados() {
+            const summaryBody = document.getElementById("summaryBody");
+            summaryBody.innerHTML = "";
+
+            let totalHorasHoja = 0;
+            let totalTiempoOperativo = 0;
+            let totalViajeros = 0;
+            let totalVentasBilletes = 0;
+            let totalLiquidacion = 0;
+
+            registros.forEach(registro => {
+                summaryBody.innerHTML += `
+                    <tr>
+                        <td>${registro.fecha}</td>
+                        <td>${registro.linea}</td>
+                        <td>${registro.numeroTurno}</td>
+                        <td>${registro.horaInicioHoja}</td>
+                        <td>${registro.horaFinHoja}</td>
+                        <td>${registro.tiempoHoja}</td>
+                        <td>${registro.login}</td>
+                        <td>${registro.logout}</td>
+                        <td>${registro.tiempoOperativo}</td>
+                        <td>${registro.excesoMin}</td>
+                        <td>${registro.numeroAutobus}</td>
+                        <td>${registro.viajeros}</td>
+                        <td>${registro.ventasBilletes}</td>
+                        <td>${registro.liquidacionTotal}</td>
+                        <td>${registro.observaciones}</td>
+                    </tr>
+                `;
+
+                totalHorasHoja += parseInt(registro.tiempoHoja.split('h')[0]) * 60 + parseInt(registro.tiempoHoja.split('h')[1]);
+                totalTiempoOperativo += parseInt(registro.tiempoOperativo.split('h')[0]) * 60 + parseInt(registro.tiempoOperativo.split('h')[1]);
+                totalViajeros += registro.viajeros;
+                totalVentasBilletes += registro.ventasBilletes;
+                totalLiquidacion += parseFloat(registro.liquidacionTotal);
+            });
+
+            summaryBody.innerHTML += `
+                <tr>
+                    <td>TOTAL</td>
+                    <td colspan="4"></td>
+                    <td>${convertirMinutosAHorasYMinutos(totalHorasHoja)}</td>
+                    <td colspan="2"></td>
+                    <td>${convertirMinutosAHorasYMinutos(totalTiempoOperativo)}</td>
+                    <td></td>
+                    <td></td>
+                    <td>${totalViajeros}</td>
+                    <td>${totalVentasBilletes}</td>
+                    <td>${totalLiquidacion.toFixed(2)}</td>
+                    <td></td>
+                </tr>
+            `;
+        }
+
+        function guardarDatosCSV() {
+            if (registros.length === 0) {
+                alert("No hay datos para guardar.");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Fecha,Línea,Número de Turno,Hora de Inicio en Hoja,Hora de Fin en Hoja,Horas Totales en Hoja,Login,Logout,Tiempo Total Operativo,Exceso de Minutos,Número de Autobús,Número de Viajeros,Venta Total de Billetes,Liquidación Total (€),Observaciones\n";
+            
+            registros.forEach(registro => {
+                csvContent += `${registro.fecha},${registro.linea},${registro.numeroTurno},${registro.horaInicioHoja},${registro.horaFinHoja},${registro.tiempoHoja},${registro.login},${registro.logout},${registro.tiempoOperativo},${registro.excesoMin},${registro.numeroAutobus},${registro.viajeros},${registro.ventasBilletes},${registro.liquidacionTotal},${registro.observaciones}\n`;
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.getElementById("downloadLink");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `registros_jornada.csv`);
+            link.innerHTML = "Descargar Registro CSV";
+            link.style.display = "block";
+        }
+    </script>
+
+</body>
+</html>
